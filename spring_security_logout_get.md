@@ -241,3 +241,98 @@ SpringSecurity のログアウトは
 * **ローカル or CloudFront 配下でのログアウト挙動**
 
 どこを深掘りする？
+
+結論から言うと **Spring Security のログアウトはデフォルトでは GET では動かない** です。
+しかし **設定すれば GET でも動く**ようにできます。ただし、**セキュリティ的には非推奨**です。
+
+---
+
+# ❌ なぜデフォルトでは GET ログアウトできないのか？
+
+理由は明確で **CSRF（クロスサイトリクエストフォージェリ）対策**。
+
+### GET でログアウトが可能だと、
+
+* 悪意のあるサイトが `<img src="https://yourapp.com/logout">` を埋め込むだけで
+  ユーザーを勝手にログアウトさせられる
+* 自動的にセッションを切断させる攻撃が可能
+
+→ そのため **Spring Security はログアウトを POST に強制している**
+
+---
+
+# ✔️ GET でログアウトしたい場合の設定
+
+### Spring Boot 3.1 / Spring Security 6 以降
+
+```java
+.logout(logout -> logout
+    .logoutRequestMatcher(
+        new AntPathRequestMatcher("/logout", "GET")
+    )
+)
+```
+
+### これで GET /logout にアクセスするとログアウトできる。
+
+---
+
+# ⚠️ しかし、セキュリティ的に注意
+
+GET を許可する場合は **"意図しないログアウトが起きる可能性"** を理解しておく必要がある。
+
+### 推奨される対策
+
+* ログアウト URL を **推測しにくいパス**にする
+  例）`/api/logout-user`
+* Referer チェックを自前で入れる
+* Cookie SameSite 設定を `Strict` にする
+* GET ログアウトをどうしても使う場合は管理画面など限定環境にとどめる
+
+---
+
+# 🔥 GET ログアウトを安全にする（例）
+
+```java
+.logout(logout -> logout
+    .logoutRequestMatcher(new AntPathRequestMatcher("/logout", "GET"))
+    .addLogoutHandler((req, res, auth) -> {
+        // Referer チェック
+        String referer = req.getHeader("Referer");
+        if (referer == null || !referer.startsWith("https://example.com")) {
+            throw new AccessDeniedException("Invalid Referer");
+        }
+    })
+)
+```
+
+---
+
+# 📝 まとめ
+
+| 方法                   | 動作         | セキュリティ    |
+| -------------------- | ---------- | --------- |
+| デフォルト /logout (POST) | ○          | 安全（標準）    |
+| GET /logout          | △（設定すれば動く） | CSRF攻撃に弱い |
+| API系ログアウト（JSON返却）    | ○（POST推奨）  | 最も安全      |
+
+---
+
+# 🔍 結論
+
+### ✔ GET ログアウトはデフォルトでは動かない
+
+### ✔ 設定すれば動く
+
+### ✔ ただし CSRF 問題があるので基本は POST 推奨
+
+---
+
+必要であれば：
+
+* **GET ログアウトを安全に運用するための設計案**
+* **ログアウトを REST API として実装する最適解**
+* **JWT + セッション併用時のログアウト最適パターン**
+
+なども詳しく説明できます。
+
