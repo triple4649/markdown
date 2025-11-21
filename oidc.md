@@ -169,3 +169,84 @@ SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
 どれを追記しますか？
 
+
+
+はい、**Back-Channel Logout は必ず POST です。**
+
+理由も含めて正確に説明します。
+
+---
+
+# ✔ Back-Channel Logout は POST 固定（仕様で決まっている）
+
+OpenID Connect Back-Channel Logout の RFC（OpenID Connect Back-Channel Logout 1.0）では、
+**認証サーバ（OpenID Provider）→ アプリケーション（Relying Party）の通知は POST で送る** と明記されています。
+
+### ◆ 通信形式（必須）
+
+```
+POST /backchannel-logout
+Content-Type: application/x-www-form-urlencoded
+
+logout_token=<JWT>
+```
+
+ここで送られるものは **logout_token（JWT）** であり、
+サーバ間のバックチャネル通信のため **GET などは絶対に使ってはいけない** とされています。
+
+---
+
+# ✔ なぜ POST なのか？
+
+## 1. **JWT（logout_token）が長いため GET に向かない**
+
+Query parameter では URL 長の制限にかかる可能性がある。
+
+## 2. **セキュリティ仕様上、バックチャネルは「API 呼び出し」として扱うため**
+
+サーバ間通信は HTTP API として扱うべき、という設計思想。
+
+## 3. **認証サーバが iframe を使わず直接サーバに通知するため**
+
+Front-Channel のようにブラウザを介さないので GET を使う意味がない。
+
+---
+
+# ✔ Back-Channel Logout で Relying Party がやること
+
+1. 認証サーバからの POST を受け取る
+2. `logout_token`（JWT）を verify（署名検証）
+3. `sub` や `sid` を取り出す
+4. そのセッションを破棄する
+
+Spring Security では現状、**この部分は自前実装が必要**。
+
+---
+
+# ✔ Front-Channel と比較（確実に理解するため）
+
+| 方式                       | 通信経路           | メソッド         | 用途       |
+| ------------------------ | -------------- | ------------ | -------- |
+| **Front-Channel Logout** | ブラウザ経由（iframe） | GET          | 手軽だが不確実  |
+| **Back-Channel Logout**  | サーバ間通信         | **POST（必須）** | 確実なログアウト |
+
+---
+
+# ✔ まとめ
+
+* **Back-Channel Logout = POST 固定**
+* Content-Type は `application/x-www-form-urlencoded`
+* payload は `logout_token=<JWT>`
+* Relying Party は POST を受け、JWT を検証しセッション削除する
+
+---
+
+必要なら：
+
+* Back-Channel Logout の Spring Boot 実装例
+* logout_token（JWT）の中身の例
+* セッションID（sid）管理の注意点
+* Front/Back を併用する構成例
+
+どれをまとめますか？
+
